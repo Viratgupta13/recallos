@@ -1,0 +1,157 @@
+// RecallOS database schema (SQLite + Prisma).
+// SQLite has no scalar-list type, so string arrays (keywords, concepts,
+// relatedTopics, options, topicIds, ...) are stored as JSON strings and
+// (de)serialized in src/lib/serialize.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                     String   @id @default(cuid())
+  name                   String
+  email                  String   @unique
+  passwordHash           String
+  avatar                 String?
+  theme                  String   @default("system")
+  dailyRevisionTarget    Int      @default(10)
+  preferredSessionLength Int      @default(20)
+  notificationsEnabled   Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  materials LearningMaterial[]
+  topics    Topic[]
+  sessions  RevisionSession[]
+  memory    MemoryState[]
+}
+
+model LearningMaterial {
+  id               String   @id @default(cuid())
+  userId           String
+  title            String
+  content          String
+  category         String
+  wordCount        Int      @default(0)
+  topicCount       Int      @default(0)
+  extractionStatus String   @default("pending")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topics    Topic[]
+  questions Question[]
+}
+
+model Topic {
+  id                 String   @id @default(cuid())
+  userId             String
+  name               String
+  category           String
+  keywords           String   @default("[]")
+  description        String   @default("")
+  sourceMaterialId   String
+  parentTopic        String?
+  relatedTopics      String   @default("[]")
+  prerequisiteTopics String   @default("[]")
+  createdAt          DateTime @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  material  LearningMaterial @relation(fields: [sourceMaterialId], references: [id], onDelete: Cascade)
+  questions Question[]
+  memory    MemoryState[]
+}
+
+model Question {
+  id             String   @id @default(cuid())
+  topicId        String
+  materialId     String
+  type           String
+  questionText   String
+  options        String?
+  expectedAnswer String
+  concepts       String   @default("[]")
+  difficulty     String   @default("medium")
+  createdAt      DateTime @default(now())
+
+  topic    Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  material LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+}
+
+model RevisionSession {
+  id                String    @id @default(cuid())
+  userId            String
+  topicIds          String    @default("[]")
+  questionIds       String    @default("[]")
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+  averageRecall     Float     @default(0)
+  questionsCompleted Int      @default(0)
+  durationMinutes   Int?
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attempts RecallAttempt[]
+}
+
+model RecallAttempt {
+  id                 String   @id @default(cuid())
+  sessionId          String?
+  questionId         String
+  topicId            String
+  userAnswer         String
+  recallScore        Int
+  rememberedConcepts String   @default("[]")
+  missingConcepts    String   @default("[]")
+  feedback           String
+  createdAt          DateTime @default(now())
+
+  session RevisionSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+}
+
+model MemoryState {
+  id            String   @id @default(cuid())
+  userId        String
+  topicId       String
+  memoryStrength Int     @default(50)
+  confidence    Int      @default(50)
+  difficulty    String   @default("medium")
+  reviewCount   Int      @default(0)
+  easeFactor    Float    @default(2.5)
+  intervalDays  Int      @default(0)
+  lastReviewed  DateTime @default(now())
+  nextReview    DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+}
+
+model PlacementTest {
+  id            String   @id @default(cuid())
+  title         String
+  category      String
+  subCategory   String
+  questionCount Int
+  duration      Int
+  difficulty    String
+  lastAttempted DateTime?
+  bestScore     Int?
+  status        String   @default("not-started")
+  order         Int      @default(0)
+}
+
+model InterviewQuestion {
+  id           String  @id @default(cuid())
+  category     String
+  questionText String
+  stage        String
+  difficulty   String
+  topicId      String?
+  order        Int     @default(0)
+}
