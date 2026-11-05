@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { requireAuth, type AuthedRequest } from '../auth.js';
 import { toMaterial, toJson } from '../lib/serialize.js';
-import { generateFromMaterial } from '../lib/extract.js';
+import { generateWithGemini } from '../lib/extractAI.js';
 
 export const materialsRouter = Router();
 materialsRouter.use(requireAuth);
@@ -62,9 +62,10 @@ materialsRouter.delete('/:id', async (req: AuthedRequest, res) => {
   res.status(204).end();
 });
 
-// Topic extraction without an LLM: deterministic keyword/frequency heuristics
-// turn the material's text into topics, each with recall questions and a fresh
-// memory state, so a brand-new user's own notes feed the revision loop.
+// Topic extraction: Gemini turns the material's text into clean topics +
+// interview-style questions (deterministic keyword/frequency heuristics as a
+// fallback), each with recall questions and a fresh memory state, so a brand-new
+// user's own notes feed the revision loop.
 // Idempotent: if topics already exist for this material, it just recounts.
 materialsRouter.post('/:id/extract-topics', async (req: AuthedRequest, res) => {
   const m = await prisma.learningMaterial.findFirst({ where: { id: req.params.id, userId: req.userId } });
@@ -79,7 +80,9 @@ materialsRouter.post('/:id/extract-topics', async (req: AuthedRequest, res) => {
     return res.json({ topicCount: existing });
   }
 
-  const generated = generateFromMaterial(m.title, m.content, m.category);
+  // Hybrid generation: Gemini writes clean topics + interview-style questions;
+  // falls back to the deterministic generator when no API key or on failure.
+  const generated = await generateWithGemini(m.title, m.content, m.category);
   const now = new Date();
 
   for (const gt of generated) {

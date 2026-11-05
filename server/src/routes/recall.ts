@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { requireAuth, type AuthedRequest } from '../auth.js';
 import { toAttempt } from '../lib/serialize.js';
-import { gradeAnswer } from '../lib/grade.js';
+import { gradeWithGemini } from '../lib/gradeAI.js';
 import { applyReview } from '../lib/scheduler.js';
 
 export const recallRouter = Router();
@@ -20,7 +20,14 @@ recallRouter.post('/attempt', async (req: AuthedRequest, res) => {
 
   const resolvedTopicId = topicId || question.topicId;
   const concepts: string[] = JSON.parse(question.concepts || '[]');
-  const grade = gradeAnswer(String(userAnswer), concepts);
+  // Hybrid grading: Gemini judges by meaning; falls back to the deterministic
+  // keyword grader when no API key is set or the call fails.
+  const grade = await gradeWithGemini({
+    questionText: question.questionText,
+    expectedAnswer: question.expectedAnswer,
+    userAnswer: String(userAnswer),
+    concepts,
+  });
 
   const attempt = await prisma.recallAttempt.create({
     data: {
